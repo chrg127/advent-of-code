@@ -17,15 +17,16 @@
 (define (choose-shape opp-shape outcome)
   ((hash-ref (hash 0 shape-sub 1 identity 2 shape-add) outcome) opp-shape))
 
-(define (day1 input)
+(define (part1 input)
   (println (apply + (map (lambda (x) (calc-score (car x) (cadr x))) input))))
 
-(define (day2 input)
+(define (part2 input)
   (println (apply + (map (lambda (x) (calc-score (car x) (choose-shape (car x) (cadr x)))) input))))
 
-(define input1 (parse (file->lines "input2-1.txt")))
-(define input2 (parse (file->lines "input2-2.txt")))
-(day1 input1)
-(day1 input2)
-(day2 input1)
-(day2 input2)
+(time (begin
+        (define input1 (parse (file->lines "input2-1.txt")))
+        (define input2 (parse (file->lines "input2-2.txt")))
+        (part1 input1)
+        (part1 input2)
+        (part2 input1)
+        (part2 input2)))
