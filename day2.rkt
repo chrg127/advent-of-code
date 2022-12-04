@@ -17,11 +17,11 @@
 (define (choose-shape opp-shape outcome)
   ((hash-ref (hash 0 shape-sub 1 identity 2 shape-add) outcome) opp-shape))
 
-(define (part1 input)
-  (println (apply + (map (lambda (x) (calc-score (car x) (cadr x))) input))))
+(define ((total-score get-shape) input)
+  (println (apply + (map (lambda (x) (calc-score (car x) (get-shape x))) input))))
 
-(define (part2 input)
-  (println (apply + (map (lambda (x) (calc-score (car x) (choose-shape (car x) (cadr x)))) input))))
+(define part1 (total-score cadr))
+(define part2 (total-score (lambda (x) (apply choose-shape x))))
 
 (time (begin
         (define input1 (parse (file->lines "input2-1.txt")))

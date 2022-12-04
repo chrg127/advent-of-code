@@ -1,4 +1,4 @@
-(define (priority-of item)
+(define (priority item)
   (let ((n (char->integer item)))
     (- n (if (> n 97) 96 38))))
 
@@ -7,16 +7,16 @@
     (cons (take lst n) (split-by (drop lst n) n))
     '()))
 
-(define (part1 input)
-  (println (apply + (map
-                      (lambda (r) (priority-of (car (apply set-intersect (split-by (string->list r)
-                                                                                   (/ (string-length r) 2))))))
-                      input))))
+(define ((process make-sets adjust-input) input)
+  (println (apply + (map (lambda (r)
+                           (priority (car (apply set-intersect (make-sets r)))))
+                         (adjust-input input)))))
 
-(define (part2 input)
-  (println (apply + (map
-                      (lambda (gs) (priority-of (car (apply set-intersect (map string->list gs)))))
-                      (split-by input 3)))))
+(define part1
+  (process (lambda (r) (split-by (string->list r) (/ (string-length r) 2)))
+           identity))
+(define part2
+  (process (lambda (r) (map string->list r)) (lambda (i) (split-by i 3))))
 
 (time (begin
         (define input1 (file->lines "input3-1.txt"))
