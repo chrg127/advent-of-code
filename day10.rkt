@@ -5,17 +5,16 @@
 
 (define (nop n x c f) (begin (f x c) (list x (+ c 1))))
 (define (add n x c f) (begin (f x c) (f x (+ c 1)) (list (+ x n) (+ c 2))))
-(define (exec instr n x c f)
-  ((hash-ref (hash 'nop nop 'add add) instr) n x c f))
 (define (instr-loop instrs f)
-  (foldl (lambda (i s) (apply exec (append i s (list f)))) (list 1 1) instrs))
+  (foldl (lambda (i s) (apply (if (eq? (car i) 'nop) nop add)
+                              (append (cdr i) s (list f)))) (list 1 1) instrs))
 (define (between x a b) (and (<= x b) (>= x a)))
 
 (define (part1 input)
   (let ([sum 0])
-    (instr-loop input (lambda (x c) (if (= (modulo (- c 20) 40) 0)
-                                      (set! sum (+ sum (* x c)))
-                                      (void))))
+    (instr-loop input (lambda (x c) (set! sum (if (= (modulo (- c 20) 40) 0)
+                                                (+ sum (* x c))
+                                                sum))))
     (println sum)))
 
 (define (part2 input)
