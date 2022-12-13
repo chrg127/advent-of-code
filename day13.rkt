@@ -21,9 +21,8 @@
         (else (let ([r (compare-values (car a) (car b))])
                 (if (not (eq? r 'idk)) r (compare-lists (cdr a) (cdr b)))))))
 
-(define (imap proc lst [i 0])
-  (if (equal? lst '()) '()
-    (cons (proc (car lst) i) (imap proc (cdr lst) (+ i 1)))))
+(define (imap f l [i 0])
+  (if (eq? l '()) '() (cons (f (car l) i) (imap f (cdr l) (+ i 1)))))
 
 (define (part1 input)
   (println (apply + (imap (lambda (x i) (if (eq? x 'lower) i 0))
@@ -31,10 +30,10 @@
                                input) 1))))
 
 (define (part2 input)
-  (let* ([sorted (sort (append (apply append input) (list '((2)) '((6))))
+  (let* ([dividers '(((2)) ((6)))]
+         [sorted (sort (append (apply append input) dividers)
                        (lambda (x y) (eq? (compare-values x y) 'lower)))])
-    (println (apply * (map (lambda (x) (+ 1 (list-index (curry equal? x) sorted)))
-                           (list '((2)) '((6))))))))
+    (println (apply * (map (lambda (x) (+ 1 (index-of sorted x))) '(((2)) ((6))))))))
 
 (define input1 (parse (file->string "input13-1.txt")))
 (define input2 (parse (file->string "input13-2.txt")))
