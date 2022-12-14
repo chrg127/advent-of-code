@@ -29,21 +29,19 @@
   (vector-set! grid (cadr pos) (set-add
                                  (vector-ref grid (cadr pos)) (car pos))))
 
-(define (next-pos p grid third-cond)
-  (findf (lambda (x) (and (not (in-grid? grid x))
-                          ;(not (set-member? sand x))
-                          (third-cond x)))
+(define (next-pos p grid inf-cond)
+  (findf (lambda (x) (and (not (in-grid? grid x)) (inf-cond x)))
          (map (curry array+ p) '((0 1) (-1 1) (1 1)))))
 
-(define (sim-one pos grid can-finish? third-cond)
-  (let ([next (next-pos pos grid third-cond)])
+(define (sim-one pos grid can-finish? inf-cond)
+  (let ([next (next-pos pos grid inf-cond)])
     (cond ((can-finish? pos next) 'finish)
           ((not next) pos)
-          (else (sim-one next grid can-finish? third-cond)))))
+          (else (sim-one next grid can-finish? inf-cond)))))
 
-(define (sim grid can-finish? third-cond [sand 0])
+(define (sim grid can-finish? inf-cond [sand 0])
   (do ([finish #f]) (finish)
-    (let ([res (sim-one '(500 0) grid can-finish? third-cond)])
+    (let ([res (sim-one '(500 0) grid can-finish? inf-cond)])
       (if (eq? res 'finish)
         (set! finish #t)
         (begin (add-grid! grid res)
