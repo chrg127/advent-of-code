@@ -5,25 +5,34 @@
         ((f (car l)) i)
         (else (list-index f (cdr l) (+ 1 i)))))
 
-(define (move n from to nums [i 0])
-  (cond ((= from to) nums)
-        ((empty? nums) '())
-        ((= i from) (move n from to (cdr nums) (+ i 1)))
-        ((= i to) (append (list (car nums) n) (move n from to (cdr nums) (+ i 1))))
-        (else (cons (car nums) (move n from to (cdr nums) (+ i 1))))))
+(define (remove-index i lst)
+  (cond ((empty? lst) '())
+        ((= i 0) (cdr lst))
+        (else (cons (car lst) (remove-index (- i 1) (cdr lst))))))
+
+(define (add-index v i lst)
+  (cond ((= i 0) (cons v lst))
+        ((empty? lst) '())
+        (else (cons (car lst) (add-index v (- i 1) (cdr lst))))))
+
+(define (add-between v i j lst)
+  (if (> i j) ; we are on the border (this is seriously the solution?)
+    (add-index v (+ i 1) lst)
+    (add-index v j lst)))
+
+(define (move n from to-1 to-2 nums)
+  (add-between n to-1 to-2 (remove-index from nums)))
 
 (define (get-pos n i len)
-  (if (< n 0)
-    (modulo (- (+ n i) 1) len)
-    (modulo (+ n i) len)))
+  (list (modulo (+ n i -1) (- len 1))
+        (modulo (+ n i) (- len 1))))
 
 (define (move-num nums indexes i [len (length nums)])
   (let* ([from (list-index (lambda (x) (= x i)) indexes)]
          [n (list-ref nums from)]
          [to (get-pos n from len)]
-         [res (move n from to nums)]
-         [is  (move i from to indexes)])
-    ; (printf "i = ~a, move ~a from ~a to ~a, res = ~a, is = ~a\n" i n from to res is)
+         [res (move n from (car to) (cadr to) nums)]
+         [is  (move i from (car to) (cadr to) indexes)])
     (list res is)))
 
 (define (step-n input [steps (length input)])
@@ -47,14 +56,5 @@
 
 (define input1 (ints (file->string "input20-1.txt")))
 (define input2 (ints (file->string "input20-2.txt")))
-
-; (define test-list1 '(4 5 6 1 7 8 9))
-; (define test-list2 '(4 -2 5 6 7 8 9))
-(define test-list3 '(4 5 6 7 8 -2 9))
-; (println (move 1 3 (get-pos 1 3 7) test-list1))
-; (println (move -2 1 (get-pos -2 1 7) test-list2))
-(printf "before = ~a\n" test-list3)
-(printf "after = ~a\n" (move -2 5 (get-pos -2 5 7) test-list3))
-
 (println (part1 input1))
 (println (part1 input2))
