@@ -21,40 +21,55 @@
     (add-index v j lst)))
 
 (define (move n from to-1 to-2 nums)
-  (add-between n to-1 to-2 (remove-index from nums)))
+  (if (= from to-2)
+    nums
+    (add-between n to-1 to-2 (remove-index from nums))))
 
 (define (get-pos n i len)
   (list (modulo (+ n i -1) (- len 1))
         (modulo (+ n i) (- len 1))))
 
-(define (move-num nums indexes i [len (length nums)])
+(define (move-num nums indexes i len)
   (let* ([from (list-index (lambda (x) (= x i)) indexes)]
          [n (list-ref nums from)]
          [to (get-pos n from len)]
          [res (move n from (car to) (cadr to) nums)]
          [is  (move i from (car to) (cadr to) indexes)])
+    ;(printf "i = ~a, move ~a from ~a to ~a, res = ~a, is = ~a\n" i n from to res is)
     (list res is)))
 
-(define (step-n input [steps (length input)])
+(define (step-n input [indexes (range (length input))]
+                [steps (length input)] [len (length input)])
   (foldl (lambda (i r)
            (let ([nums (car r)] [indexes (cadr r)])
-             (move-num nums indexes i steps)))
-         (list input (range (length input)))
+             (move-num nums indexes i len)))
+         (list input indexes)
          (range steps)))
 
 (define (get-nth n nums)
   (let ([zero-index (list-index zero? nums)])
     (list-ref nums (modulo (+ n zero-index) (length nums)))))
 
+(define (find-grove nums)
+  (+ (get-nth 1000 nums) (get-nth 2000 nums) (get-nth 3000 nums)))
+
 (define (part1 input)
-  (let* ([result (car (step-n input))]
-         [one   (get-nth 1000 result)]
-         [two   (get-nth 2000 result)]
-         [three (get-nth 3000 result)])
-    (printf "~a ~a ~a\n" one two three)
-    (+ one two three)))
+  (println (find-grove (car (step-n input)))))
+
+(define (rounds nums num-rounds)
+  (foldl (lambda (i ns)
+           ; (printf "round ~a: ~a\n" i ns)
+           (step-n (car ns) (cadr ns)))
+         (list nums (range (length nums)))
+         (range num-rounds)))
+
+(define (part2 input)
+  (let ([decrypted (map (lambda (x) (* x 811589153)) input)])
+    (println (find-grove (car (rounds decrypted 10))))))
 
 (define input1 (ints (file->string "input20-1.txt")))
 (define input2 (ints (file->string "input20-2.txt")))
-(println (part1 input1))
-(println (part1 input2))
+(part1 input1)
+(part1 input2)
+(part2 input1)
+(part2 input2)
