@@ -20,86 +20,68 @@
 (define (add-rock rock pos grid) (foldl add-pos grid (make-ps rock pos)))
 (define (adjust pos last rock grid)
   (if (andmap (curry valid-pos? grid) (make-ps rock pos)) pos last))
+
 (define (can-rest? rock pos grid)
-  (if (= (cadr pos) (- (fourth grid) 1)) #t (findf (curry in-grid? grid) (make-ps rock pos))))
+  (if (= (cadr pos) (- (fourth grid) 1))
+    #t
+    (findf (curry in-grid? grid) (make-ps rock pos))))
 
-;; keep a history tracking the positions of the indexes for rocks
-;; and movements. for each pair of (rocks, movements), keep the number
-;; of rocks and corresponding height.
+(define (findf-consecutive n proc elems l)
+  (cond ((empty? (list-tail l n)) #f)
+        ((andmap proc elems (take l 3)) l)
+        (else (findf-consecutive n proc elems (cdr l)))))
 
-(define (find-consecutive-elems e1 e2 e3 l [eq-fn equal?])
-  (cond ((or (empty? l)
-             (empty? (cdr l))
-             (empty? (cddr l))) #f)
-        ((and (eq-fn e1 (car l))
-              (eq-fn e2 (cadr l))
-              (eq-fn e3 (caddr l))) l)
-        (else (find-consecutive-elems e1 e2 e3 (cdr l) eq-fn))))
-
-(define (index-positions=? a b) (and (= (car a) (car b)) (= (cadr a) (cadr b))))
-(define (make-hist) '())
-(define (add-hist hist mi ri nr h)
-  (cons (list mi ri nr h) hist))
-(define (compare-last-two hist)
-  (if (or (empty? hist) (empty? (cdr hist)) (empty? (cddr hist)))
+(define (find-pattern hist [n 3])
+  (if (< (length hist) (* n 2))
     #f
-    (find-consecutive-elems (car hist) (cadr hist) (caddr hist) (cdddr hist) index-positions=?)))
+    (findf-consecutive n (lambda (a b) (andmap = (take a 2) (take b 2)))
+                       (take hist n) (drop hist n))))
 
-(define (fuck-you start end hist-len)
+(define (do-skip start end target)
   (let* ([nr-start (third start)]
-         [nr-end (third end)]
          [h-start (fourth start)]
-         [h-end (fourth end)]
-         [nr-diff (- nr-end nr-start)]
-         [h-diff  (- h-end h-start)]
-         [num-cycles (quotient (- 1000000000000 nr-start) nr-diff)]
-         [num-cycles-inexact (exact->inexact (/ (- 1000000000000 nr-start) nr-diff))]
-         [new-nr (+ nr-start (* nr-diff num-cycles))]
-         [new-h  (+ h-start  (* h-diff  num-cycles-inexact))])
-    (printf "hist len = ~a\n" hist-len)
-    (printf "start of pattern: ~a, ~a\n" nr-start h-start)
-    (printf "after first cycle: ~a, ~a\n" nr-end h-end)
-    (printf "stats: ~a ~a\n" nr-diff h-diff)
-    (printf "num cycles: ~a ~a\n" num-cycles num-cycles-inexact)
-    (printf "after skipping: ~a, ~a\n" new-nr new-h)
-    (values new-nr (make-grid 7 new-h))))
+         [nr-diff (- (third  end) nr-start)]
+         [h-diff  (- (fourth end) h-start)]
+         [cycles (quotient (- target nr-start) nr-diff)]
+         [new-nr (+ nr-start (* nr-diff cycles))]
+         [new-h  (+ h-start  (* h-diff  cycles))])
+    (values (car start) new-nr (make-grid 7 new-h) '())))
 
-(define (tetris movements until-val)
-  (define grid (make-grid 7))
-  (define mi 0)
-  (define hist (make-hist))
-
-  (define (next-pos pos rock grid)
-    (let* ([move (if (char=? (string-ref movements mi) #\<) '(-1 0) '(1 0))]
+(define (start-pos g) (list 2 (+ 3 (grid-height g))))
+(define (rock-step rock grid moves mi [pos (start-pos grid)])
+  (if (can-rest? rock pos grid)
+    (values mi (add-rock rock (array+ pos '(0 1)) grid))
+    (let* ([move (if (char=? (string-ref moves mi) #\<) '(-1 0) '(1 0))]
            [pos-hor (adjust (array+ pos move) pos rock grid)])
-      (set! mi (modulo (add1 mi) (string-length movements)))
-      (array+ pos-hor '(0 -1))))
+      (rock-step rock grid moves (modulo (+ mi 1) (string-length moves))
+                        (array+ pos-hor '(0 -1))))))
 
-  (define (hist-stuff mi ri num-rocks grid)
-    (set! hist (add-hist hist mi ri num-rocks (grid-height grid)))
-    (let ([r (compare-last-two hist)])
-      (if r
-        (let ([i-want-to-finish-this-problem (caddr hist)]
-              [len (length hist)])
-          (set! hist '())
-          (fuck-you (caddr r) i-want-to-finish-this-problem len))
-        (values num-rocks grid))))
+(define (update-hist hist mi nr grid target)
+  (let* ([ri (modulo nr 5)]
+         [new-hist (cons (list mi ri nr (grid-height grid)) hist)]
+         [skip (find-pattern new-hist)])
+    (if skip
+      (do-skip (caddr skip) (caddr new-hist) target)
+      (values mi nr grid new-hist))))
 
-  (do ([ri 0]) ((= ri until-val))
-    (do ([rock (list-ref rocks (modulo ri (length rocks)))]
-         [pos (list 2 (+ 3 (caddr grid)))])
-      ((can-rest? rock pos grid)
-       (set! grid (add-rock rock (array+ pos '(0 1)) grid)))
-      (set! pos (next-pos pos rock grid)))
-    (set! ri (add1 ri))
-    (let-values ([(new-nr new-grid) (hist-stuff mi (modulo ri (length rocks)) ri grid)])
-      (set! ri new-nr)
-      (set! grid new-grid)))
-  (println (grid-height grid)))
+(define (tetris-step target moves nr mi grid hist)
+  (if (= nr target)
+    (grid-height grid)
+    (let*-values ([(new-mi new-grid)
+                   (rock-step (list-ref rocks (modulo nr 5)) grid moves mi)]
+                  [(new-mi2 new-nr new-grid2 new-hist)
+                   (update-hist hist new-mi (+ nr 1) new-grid target)])
+      (tetris-step target moves new-nr new-mi2 new-grid2 new-hist))))
+
+(define (tetris target moves)
+  (tetris-step target moves 0 0 (make-grid 7) '()))
+
+(define part1 (curry tetris 2022))
+(define part2 (curry tetris 1000000000000))
 
 (define input1 ">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>")
 (define input2 (string-replace (file->string "input17-2.txt") "\n" ""))
-; (tetris input1 2022)
-; (tetris input2 2022)
-(tetris input1 1000000000000)
-(tetris input2 1000000000000)
+(println (part1 input1))
+(println (part1 input2))
+(println (part2 input1))
+(println (part2 input2))
