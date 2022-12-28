@@ -8,7 +8,7 @@
   (or (equal? pos start) (equal? pos end)
       (and (> (car pos)  0) (< (car pos)  w)
            (> (cadr pos) 0) (< (cadr pos) h)
-           (not (member pos (map car board))))))
+           (not (set-member? board pos)))))
 
 (define neighbors '((0 0) (-1 0) (1 0) (0 -1) (0 1)))
 (define ((advance board w h start end) pos)
@@ -17,13 +17,13 @@
 
 (define (do-sim start end board w h)
   (define (step positions board [count 0])
-    ; (printf "count = ~a, num pos = ~a\n" count (set-count positions))
     (if (set-member? positions end)
-      count
+      (list count board)
       (let* ([new-board (map (move-blizzard w h) board)]
+             [bs (list->set (map car new-board))]
              [new-pos (apply set-union
                              (set-map positions
-                                      (advance new-board w h start end)))])
+                                      (advance bs w h start end)))])
         (step new-pos new-board (+ count 1)))))
   (step (set start) board))
 
@@ -45,29 +45,20 @@
 
 (define (part1 board)
   (let* ([w (car board)] [h (cadr board)])
-    (println (do-sim (list 0 1) (list (- w 1) h) (caddr board) w h))))
+    (println (car (do-sim '(0 1) (list (- w 1) h) (caddr board) w h)))))
+
+(define (part2 board)
+  (let* ([w (car board)] [h (cadr board)]
+         [start '(0 1)] [end (list (- w 1) h)]
+         [trip1 (do-sim start end (caddr board) w h)]
+         [trip2 (do-sim end start (cadr trip1) w h)]
+         [trip3 (do-sim start end (cadr trip2) w h)])
+    (println (+ (car trip1) (car trip2) (car trip3)))))
 
 (define input1 (parse (file->lines "input24-1.txt")))
 (define input2 (parse (file->lines "input24-2.txt")))
 (define input3 (parse (file->lines "input24-3.txt")))
 (part1 input2)
 (part1 input3)
-
-; (define (print-grid w h mark)
-;   (for ([y (in-range h)])
-;        (for ([x (in-range w)])
-;             (printf "~a" (mark x y)))
-;        (printf "\n")))
-
-; (define (dir-mark b)
-;   (hash-ref (hash '(-1 0) #\< '(1 0) #\> '(0 -1) #\^ '(0 1) #\v) (cadr b)))
-
-; (define (print-board board)
-;   (let ([w (car board)]
-;         [h (cadr board)])
-;     (print-grid w h (lambda (x y)
-;                       (if (or (= x 0) (= x (- w 1)) (= y 0) (= y (- h 1)))
-;                         #\#
-;                         (let ([v (findf (lambda (e) (equal? (car e) (list x y)))
-;                                         (caddr board))])
-;                           (if v (dir-mark v) #\.)))))))
+(part2 input2)
+(part2 input3)
