@@ -1,0 +1,31 @@
+(require math)
+
+(define (parse name) (map string->list (file->lines name)))
+(define (open-paren? x) (or (char=? x #\() (char=? x #\[) (char=? x #\{) (char=? x #\<)))
+(define points (hash #\) 3 #\] 57 #\} 1197 #\> 25137))
+(define points-part2 (hash 'curved 1 'square 2 'curly 3 'angle 4))
+(define ptype (hash #\( 'curved #\) 'curved #\[ 'square #\] 'square #\{ 'curly #\} 'curly #\< 'angle #\> 'angle))
+
+(define (check-syntax parens stack success-fn error-fn)
+  (if (null? parens)
+    (success-fn stack)
+    (let ((p (car parens)))
+      (cond ((open-paren? p) (check-syntax (cdr parens) (cons (hash-ref ptype p) stack) success-fn error-fn))
+            ((not (eq? (hash-ref ptype p) (car stack))) (error-fn p))
+            (else (check-syntax (cdr parens) (cdr stack) success-fn error-fn))))))
+
+(define (sol1 name)
+  (displayln (apply + (map (lambda (x) (check-syntax x '() (lambda (s) 0) (lambda (p) (hash-ref points p)))) (parse name)))))
+
+(define (sol2 name)
+  (define (parens-to-points lst)
+    (foldl (lambda (p r) (+ (* r 5) (hash-ref points-part2 p))) 0 lst))
+  (displayln (median < (sort (filter (lambda (x) (not (= x 0)))
+                                     (map (lambda (x) (parens-to-points (check-syntax x '() identity (lambda (p) '()))))
+                                          (parse name)))
+                             <))))
+
+(sol1 "input10-1.txt")
+(sol1 "input10-2.txt")
+(sol2 "input10-1.txt")
+(sol2 "input10-2.txt")

@@ -1,0 +1,56 @@
+(define (char->num c) (- (char->integer c) (char->integer #\0)))
+(define (parse name)
+  (map (lambda (line) (map char->num (string->list line)))
+       (port->lines (open-input-file name))))
+
+(define (sum-two l1 l2)
+  (foldr (lambda (x y r) (cons (+ x y) r)) '() l1 l2))
+
+(define (sum-lists lists len)
+  (foldr sum-two (build-list len (lambda (x) 0)) lists))
+
+(define (map-index f lst)
+  (define (step lst f i)
+    (if (null? lst) '() (cons (f (car lst) i) (step (cdr lst) f (+ i 1)))))
+  (step lst f 0))
+
+(define (to-dec bits)
+  (define len (length bits))
+  (apply + (map-index (lambda (x i) (* x (expt 2 (- len i 1)))) bits)))
+
+(define (count-ones nums nbits) (sum-lists nums nbits))
+
+(define (sol1 name)
+  (define num-list (parse name))
+  (define num-bits (length (car num-list)))
+  (define count-res (count-ones num-list num-bits))
+  (define gamma-rate (map (lambda (x) (if (> x (/ (length num-list) 2)) 0 1)) count-res))
+  (define eps-rate   (map (lambda (x) (if (< x (/ (length num-list) 2)) 0 1)) count-res))
+  (displayln (* (to-dec gamma-rate) (to-dec eps-rate))))
+
+(define (filter-nums num-list bitpos cmpfn)
+  (define num-bits (length (car num-list)))
+  (define count-res (count-ones num-list num-bits))
+  (define bit (if (cmpfn (list-ref count-res bitpos)
+                         (/ (length num-list) 2))
+                1 0))
+  (filter (lambda (x) (= (list-ref x bitpos) bit)) num-list))
+
+(define (filter-loop num-list cmpfn)
+  (define num-bits (length (car num-list)))
+  (define (filter-loop1 num-list pos)
+    (if (or (= pos num-bits) (= (length num-list) 1))
+      (car num-list)
+      (filter-loop1 (filter-nums num-list pos cmpfn) (+ pos 1))))
+  (filter-loop1 num-list 0))
+
+(define (sol2 name)
+  (define num-list (parse name))
+  (define oxygen (filter-loop num-list >=))
+  (define co2 (filter-loop num-list <))
+  (displayln (* (to-dec oxygen) (to-dec co2))))
+
+(sol1 "input3-1.txt")
+(sol1 "input3-2.txt")
+(sol2 "input3-1.txt")
+(sol2 "input3-2.txt")

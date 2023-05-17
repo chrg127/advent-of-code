@@ -1,0 +1,105 @@
+(define (graph-add-path! g p q w)
+  (hash-update! g p
+                (lambda (x) (list-update x 0 (lambda (path) (cons (list q w) path))))
+                (lambda () (list '() (expt 2 64) null))))
+
+(define (char->num c) (- (char->integer c) (char->integer #\0)))
+(define (mat-ref m i j) (string-ref (list-ref m j) i))
+(define (generate-idxs i j len)
+  (filter (lambda (x) (and (>= (car x) 0)   (>= (cadr x) 0)
+                           (<  (car x) len) (<  (cadr x) len)))
+            (list (list (sub1 i) j)
+                  (list (add1 i) j)
+                  (list i (sub1 j))
+                  (list i (add1 j)))))
+
+(define (map-index f l [i 0]) (if (null? l) '() (cons (f (car l) i) (map-index f (cdr l) (add1 i)))))
+(define (map-ij f l) (map-index (lambda (x i) (map-index (lambda (y j) (f y i j)) x)) l))
+(define (mat->hash lines)
+  (let ((h (make-hash)))
+    (map-ij (lambda (x i j) (hash-set! h (list i j) (char->num x))) (map string->list lines))
+    h))
+
+(define (mat-print mat w h)
+  (for ([i (in-range h)])
+       (for ([j (in-range w)])
+            (display (hash-ref mat (list i j))))
+       (newline)))
+
+(define (parse name)
+  (let* ([lines (file->lines name)] [len (length lines)] [graph (make-hash)])
+    (for ([i (in-range len)])
+         (for ([j (in-range len)])
+              (for-each (lambda (idx)
+                          (graph-add-path! graph (list i j) idx
+                                           (char->num (mat-ref lines (car idx) (cadr idx)))))
+                        (generate-idxs i j len))))
+    (values graph len)))
+
+(define (resize mat len)
+  (define res (make-hash))
+  (for ([row (in-range (* len 5))])
+       (for ([col (in-range (* len 5))])
+            (hash-set! res (list row col)
+                       (+ (hash-ref mat (list (modulo row len) (modulo col len)))
+                          (quotient row len)
+                          (quotient col len)))))
+  (for-each (lambda (k) (hash-update! res k (lambda (x) (if (>= x 10) (+ (modulo x 10) 1) x))))
+            (hash-keys res))
+  (values res (* len 5)))
+
+(define (parse-part2 name)
+  (let* ([lines (file->lines name)]
+         [len (length lines)]
+         [tab (mat->hash lines)])
+    (define-values (t l) (resize tab len))
+    (values t l)))
+
+(define (adjs x) (car x))
+(define (dist x) (cadr x))
+(define (parent x) (caddr x))
+(define (weight x) (cadr x))
+
+; u is an id; v is a (id weight) pair
+(define (relax g u v udata vdata)
+  (let ([udist (+ (dist udata) (weight v))])
+    (if (> (dist vdata) udist) (list (adjs vdata) udist u) vdata)))
+
+(define (dijkstra graph source)
+  (define (extract-min q)
+    (foldl (lambda (x y) (if (< (dist (hash-ref graph x)) (dist (hash-ref graph y))) x y)) (car q) q))
+  (define (loop queue)
+    (if (null? queue)
+      'done
+      (let* ([u (extract-min queue)] [udata (hash-ref graph u)])
+        (for-each (lambda (vw) (hash-update! graph (car vw) (lambda (vdata) (relax graph u vw udata vdata))))
+                  (adjs udata))
+        (loop (remove u queue)))))
+  (loop (hash-keys graph)))
+
+(define (print-parents graph source)
+  (printf "~a -> " source)
+  (let ((next (parent (hash-ref graph source))))
+    (if (null? next)
+      (printf "done\n")
+      (print-parents graph next))))
+
+(define (risk graph source)
+  (define (weight-between u v) (cadr (findf (lambda (x) (equal? (car x) v)) (adjs (hash-ref graph u)))))
+  (let ((next (parent (hash-ref graph source))))
+    (if (null? next)
+      0
+      (+ (weight-between next source) (risk graph next)))))
+
+(define (sol1 name)
+  (define-values (graph len) (parse name))
+  (hash-update! graph '(0 0) (lambda (x) (list-set x 1 0)))
+  (dijkstra graph '(0 0))
+  (displayln (risk graph (list (sub1 len) (sub1 len)))))
+
+(sol1 "input15-1.txt")
+(sol1 "input15-2.txt")
+(define-values (t l) (parse-part2 "input15-1.txt"))
+(mat-print t l l)
+(define-values (t l) (parse-part2 "input15-2.txt"))
+(mat-print t l l)

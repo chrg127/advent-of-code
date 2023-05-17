@@ -1,0 +1,92 @@
+(define drawn '())
+(define *boards* '())
+
+(define (caddddr x) (car (cdr (cdddr x))))
+
+(define (mark num)
+  (define (markl lst num)
+    (map (lambda (x) (if (= x num) -1 x)) lst))
+  (define (markb board num)
+    (map (lambda (x) (markl x num)) board))
+  (set! *boards* (map (lambda (board) (markb board num)) *boards*)))
+
+(define (marked? num) (= num -1))
+
+(define (check-rows board)
+  (ormap (lambda (row) (andmap marked? row)) board))
+
+(define (check-cols board)
+  (define (check a b c d e) ; it's always 5x5
+     (cond ((null? a) #f)
+           ((and (marked? (car a))
+                 (marked? (car b))
+                 (marked? (car c))
+                 (marked? (car d))
+                 (marked? (car e))) #t)
+           (else (check (cdr a) (cdr b) (cdr c) (cdr d) (cdr e)))))
+   (check (car board) (cadr board) (caddr board) (cadddr board) (caddddr board)))
+
+(define (check-board board) (or (check-rows board) (check-cols board)))
+
+(define (loop nums)
+  (if (or (null? nums) (null? *boards*))
+    '()
+    (begin (mark (car nums))
+           (let ((board (findf check-board *boards*)))
+             (if (not (eq? board #f))
+               (cons (car nums) board)
+               (loop (cdr nums)))))))
+
+(define *winnings* '())
+
+(define (remove-and-get num)
+  (mark num)
+  (let ((winning-boards (filter check-board *boards*)))
+    (if (not (empty? winning-boards))
+      (begin (set! *boards* (remove* winning-boards *boards*))
+             (map (lambda (board) (cons board num)) winning-boards))
+      '())))
+
+(define (loop2 nums)
+  (for-each (lambda (n) (set! *winnings* (append (remove-and-get n) *winnings*))) nums))
+
+(define (unmarked-sum board)
+  (define (sum a b)
+    (cond ((and (marked? a) (marked? b)) 0)
+          ((marked? a) b)
+          ((marked? b) a)
+          (else (+ a b))))
+  (foldl (lambda (r v) (+ (foldl sum 0 r) v)) 0 board))
+
+(define (read-lines in n)
+  (if (= n 0) '() (cons (read-line in) (read-lines in (- n 1)))))
+
+(define (parse name)
+  (define in (open-input-file name))
+  (set! drawn (map string->number (string-split (read-line in) ",")))
+  (read-line in)
+  (define (conv line) (map string->number (string-split line)))
+  (define (loop)
+    (if (eof-object? (peek-char in))
+      '()
+      (cons (map conv (read-lines in 5))
+            (begin (read-line in) (loop)))))
+  (set! *boards* (loop)))
+
+(define (sol1 name)
+  (parse name)
+  (define winners (loop drawn))
+  (define msum (unmarked-sum (cdr winners)))
+  (printf "~a * ~a = ~a\n" (car winners) msum (* msum (car winners))))
+
+(define (sol2 name)
+  (parse name)
+  (loop2 drawn)
+  (let ((board (caar *winnings*)) (num (cdar *winnings*)))
+    (let ((msum (unmarked-sum board)))
+      (printf "~a * ~a = ~a\n" msum num (* msum num)))))
+
+(sol1 "input4-1.txt")
+(sol1 "input4-2.txt")
+(sol2 "input4-1.txt")
+(sol2 "input4-2.txt")
