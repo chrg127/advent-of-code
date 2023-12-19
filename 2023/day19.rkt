@@ -48,3 +48,52 @@
 
 (println (solve "input19-1.txt"))
 (println (solve "input19-2.txt"))
+
+(define (make-workflow-tree workflows name)
+  (map (lambda (rule)
+         (cond ([string=? (fourth rule) "R"] (list rule "R"))
+               ([string=? (fourth rule) "A"] (list rule "A"))
+               (else (cons rule (make-workflow-tree workflows (fourth rule))))))
+       (hash-ref workflows name)))
+
+(define (apply-rule rule bounds)
+  (let ([inc (if (equal? (second rule) >) 1 -1)])
+    (values (list-update bounds (if (equal? (second rule) <) 1 0)
+                         (lambda (b) (list-update b (first rule)
+                                                  (lambda (value) (+ inc (third rule))))))
+            (list-update bounds (if (equal? (second rule) <) 0 1)
+                         (lambda (b) (list-update b (first rule)
+                                                  (lambda (value) (third rule))))))))
+
+(define (walk-tree t bounds [i 0])
+  ; (printf "~abounds = ~a\n" (make-string (* i 4) #\ ) bounds)
+  (if (string? (car t))
+    (begin ;(printf "~afinal bounds = ~a\n" (make-string (* i 4) #\ ) bounds)
+           (if (string=? (car t) "R") '() (list bounds)))
+    (append*
+      (filter (lambda (x) (not (empty? x)))
+              (cadr
+                (foldl (lambda (c r)
+                         (let ([cur-bounds (car r)]
+                               [bounds-list (cadr r)])
+                           (let-values ([(bound-if-true bound-if-false)
+                                         (apply-rule (car c) cur-bounds)])
+                             ; (printf "~achecking ~a\n" (make-string (* i 4) #\ ) (fourth (car c)))
+                             (list bound-if-false
+                                   (cons (walk-tree (cdr c) bound-if-true (+ i 1))
+                                         bounds-list)))))
+                       (list bounds '()) t))))))
+
+(define (mul-bounds bs)
+  (apply * (map (lambda (x y) (add1 (- x y)))
+                (cadr bs) (car bs))))
+
+(define (solve2 in)
+  (let*-values ([(workflows parts) (parse in)]
+                [(tree) (make-workflow-tree workflows "in")]
+                [(bounds) (walk-tree tree '((1 1 1 1) (4000 4000 4000 4000)))]
+                [(result) (apply + (remove-duplicates (map mul-bounds bounds)))])
+    result))
+
+(println (solve2 "input19-1.txt"))
+(println (solve2 "input19-2.txt"))
