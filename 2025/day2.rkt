@@ -1,14 +1,15 @@
 (define (idiv a b) (floor (/ a b)))
 
 (define (has-pattern-1 id)
-  (let* ([str (number->string id)] [part-len (idiv (string-length str) 2)])
-    (string=? (substring str 0 part-len)
-              (substring str part-len))))
+  (let* ([str (number->string id)]
+         [mid (idiv (string-length str) 2)])
+    (string=? (substring str 0 mid)
+              (substring str mid))))
 
-(define (all-equal? l)
+(define (all-equal? l [pred equal?])
   (if (empty? l)
     #t
-    (andmap equal? (take l (- (length l) 1)) (drop l 1))))
+    (andmap pred (take l (- (length l) 1)) (drop l 1))))
 
 (define (generate-parts str num-parts)
   (let* ([len (string-length str)]
@@ -21,7 +22,7 @@
     (call/cc (lambda (return)
       (for-each (lambda (num-parts)
                   (when (and (= (modulo len num-parts) 0)
-                             (all-equal? (generate-parts str num-parts)))
+                             (all-equal? (generate-parts str num-parts) string=?))
                     (return #t)))
                 (inclusive-range 2 len))
       #f))))
