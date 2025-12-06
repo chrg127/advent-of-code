@@ -1,0 +1,115 @@
+diff --git a/2023/day17.rkt b/2023/day17.rkt
+index e08b24e..8c26b45 100644
+--- a/2023/day17.rkt
++++ b/2023/day17.rkt
+@@ -4,47 +4,83 @@
+ (define (grid-ref g p) (vector-ref (vector-ref g (cadr p)) (car p)))
+ (define vec+ (curry map +))
+ (define vec- (curry map -))
+-(define (in-bounds? g p)
+-  (andmap (lambda (x) (and (>= x 0) (< x (vector-length g)))) p))
++(define (in-bounds? bounds p) (andmap (lambda (b p) (>= p 0) (< p b)) bounds p))
+ 
+ (define (parse in)
+-  (list->vector (map (lambda (line) (list->vector (map to-num (string->list line))))
+-                     (file->lines in))))
++  (list->vector
++    (map (lambda (line) (list->vector (map to-num (string->list line))))
++         (file->lines in))))
+ 
+-(define (gen-neighbors g pos dir n)
+-  (filter (lambda (p) (and (in-bounds? g (car p))
+-                           (not (> (caddr p) 2))
+-                           (not (equal? dir (map - (cadr p))))))
++(define (gen-neighbors2 bounds move-min pos dir n)
++  (filter (lambda (p)
++            (and (in-bounds? bounds (car p))
++                 ; can't turn 180 degrees
++                 (not (equal? dir (map - (cadr p))))
++                 ; turning when you took less than move-min steps
++                 (not (and (< n move-min) (not (equal? dir (cadr p)))))))
+           (map (lambda (d) (list (vec+ pos d) d (if (equal? d dir) (+ n 1) 0)))
+                '((1 0) (-1 0) (0 1) (0 -1)))))
+ 
+-(define (gen-vertices grid)
++(define (gen-vertices grid bounds move-max)
+   (append-map (lambda (p)
+                 (append-map (lambda (d)
+-                              (map (lambda(n) (list p d n)) (range 4)))
++                              (map (lambda(n) (list p d n)) (range move-max)))
+                             '((1 0) (-1 0) (0 1) (0 -1))))
+-              (cartesian-product (range (vector-length grid)) (range (vector-length grid)))))
++              (cartesian-product (range (car bounds)) (range (cadr bounds)))))
+ 
+-(define (gen-graph grid)
+-  (weighted-graph/directed
+-         (append-map (lambda (p)
+-                       (map (lambda (n) (list (grid-ref grid (car p)) p n))
+-                            (apply (curry gen-neighbors grid) p)))
+-                     (gen-vertices grid))))
++(define (gen-edges grid bounds move-min move-max)
++  (append-map (lambda (p)
++                (map (lambda (n) (list (grid-ref grid (car p)) p n))
++                     (apply (curry gen-neighbors2 bounds move-min) p)))
++              (gen-vertices grid bounds move-max)))
+ 
+-(define (min-heat-loss len dists [i (sub1 len)])
+-  (apply min (flatten
++(define (min-heat-loss bounds dists move-min move-max [to (map sub1 bounds)])
++  (apply min (append*
+                (map (lambda (d)
+-                      (map (lambda (n) (hash-ref dists (list (list i i) d n)))
+-                           (range 4)))
++                      (map (lambda (n) (hash-ref dists (list to d n) +inf.0))
++                           (range move-min move-max)))
+                     '((1 0) (-1 0) (0 1) (0 -1))))))
+ 
+-(define (solve in [input (parse in)])
+-  (let ([g (gen-graph input)])
++(define (minf fn lst)
++  (foldl (lambda (x r) (if (< (fn x) (fn r)) x r))
++         (car lst) (cdr lst)))
++
++(define (min-heat-loss2 bounds dists move-min move-max [to (map sub1 bounds)])
++  (minf cadr (append*
++               (map (lambda (d)
++                      (map (lambda (n)
++                             (let ([node (list to d n)])
++                               (list node (hash-ref dists node +inf.0))))
++                           (range move-min move-max)))
++                    '((1 0) (-1 0) (0 1) (0 -1))))))
++
++(define (make-path parents from to)
++  (if (equal? from to)
++    (list from)
++    (cons from (make-path parents (hash-ref parents from) to))))
++
++(define (solve in move-min move-max [input (parse in)])
++  (let* ([bounds (list (vector-length (vector-ref input 0))
++                       (vector-length input))]
++         [g (weighted-graph/directed (gen-edges input bounds move-min move-max))])
+     (let-values ([( dists  parents) (dijkstra g '((0 0) (1 0) 0))]
+                  [(dists2 parents2) (dijkstra g '((0 0) (0 1) 0))])
+-      (min (min-heat-loss (vector-length input) dists)
+-           (min-heat-loss (vector-length input) dists)))))
++      (min (min-heat-loss bounds dists move-min move-max)
++           (min-heat-loss bounds dists move-min move-max)))))
++
++(define (solve2 in move-min move-max [input (parse in)])
++  (let* ([bounds (list (vector-length (vector-ref input 0))
++                       (vector-length input))]
++         [g (weighted-graph/directed (gen-edges input bounds move-min move-max))])
++    (let-values ([( dists  parents) (dijkstra g '((0 0) (1 0) 0))])
++                 ; [(dists2 parents2) (dijkstra g '((0 0) (0 1) 0))])
++      (let* ([pos (min-heat-loss2 bounds dists move-min move-max)]
++             [path (make-path parents (car pos) '((0 0) (1 0) 0))])
++        (map (compose (curry grid-ref input) car) path)))))
+ 
+-(println (solve "input17-1.txt"))
+-(println (solve "input17-2.txt"))
++; (println (solve "input17-1.txt" 0 3))
++; (println (solve "input17-2.txt" 0 3))
++; (println (solve "input17-1.txt" 3 10))
++; (println (solve "input17-3.txt" 3 10))
++; (println (solve "input17-2.txt" 3 10))
++(println (solve2 "input17-1.txt" 3 10))
