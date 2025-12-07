@@ -25,24 +25,7 @@
         (let-values ([(new-beams num-splitted) (advance beams grid)])
           (loop new-beams (+ num-splitted splitted-count))))))
 
-(define (advance-2 beams grid)
-   (append*
-    (map (lambda (beam)
-           (let ([new-beam (vec+ beam '(0 1))])
-             (if (char=? (grid-ref grid new-beam) #\^)
-                 (list (vec+ new-beam '(-1 0))
-                       (vec+ new-beam '( 1 0)))
-                 (list new-beam))))
-         beams)))
-
 (define (part2 grid start end-y)
-  (length
-    (foldl (lambda (_ beams)
-             ;; (printf "~a\n" beams)
-             (advance-2 beams grid))
-           (list start) (range (sub1 end-y)))))
-
-(define (advance-3 grid start end-y)
   (define memo (make-hash))
   (define (loop pos)
     (let ([beam (vec+ pos '(0 1))])
@@ -57,13 +40,10 @@
                       res))])))
   (loop start))
 
-(define (part3 grid start end-y)
-  (advance-3 grid start end-y))
-
 (define (solve name)
   (let* ([grid (map string->list (file->lines name))]
          [end-y (length grid)]
          [coords (cartesian-product (range (length (car grid))) (range end-y))]
          [start (findf (lambda (p) (char=? (grid-ref grid p) #\S)) coords)])
     (list (part1 grid start end-y)
-          (part3 grid start end-y))))
+          (part2 grid start end-y))))
