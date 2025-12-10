@@ -17,8 +17,24 @@
        (<= (cadr p) (cadr (cadr rec)))))
 
 (define (in-rectangles? p recs)
-  ;; (printf "~a ~a\n" p recs)
   (findf (lambda (r) (in-rectangle? p r)) recs))
+
+(define (rectangle-overlaps? a b)
+  (not (and (or (< (car  (cadr b)) (car  (car  a)))
+                (> (car  (car  b)) (car  (cadr a))))
+            (or (< (cadr (cadr b)) (cadr (car  a)))
+                (> (cadr (car  b)) (car  (cadr a)))))))
+
+(define (clamp x a b) (max (min x b) a))
+
+;; cut rectangle b with a
+(define (cut-rectangle a b)
+  (if (not (rectangle-overlaps? a b))
+      #f
+      (list (list (apply clamp (car  (car  b)) (map car  a))
+                  (apply clamp (cadr (car  b)) (map cadr a)))
+            (list (apply clamp (car  (cadr b)) (map car  a))
+                  (apply clamp (cadr (cadr b)) (map cadr a))))))
 
 ;; some visualizations
 (define (draw-line! grid line)
@@ -60,73 +76,103 @@
 ;;
 ;; begin "sweeping a line" through each group of points:
 ;; - the goal is to create rectangles that describe the big polygon
-;; - for each point in a group, find if it connects to a point of
-;;   the last group
-;; - if such a connection has been found, try creating a rectangle
-;;   by finding if there's a higher/lower connection
-;; - put rectangle in a list
-
 (define (build-rec conns x2 y other-y)
-  (printf "build-rec ~a ~a ~a ~a\n" conns x2 y other-y)
   (let ([x1 (max (hash-ref conns y)
                  (hash-ref conns other-y))]
         [y1 (min y other-y)]
         [y2 (max y other-y)])
     (list (list x1 y1) (list x2 y2)))) ;; my rectangles are AABBs
 
-(define (find-nearest-conn y conns)
-  (let* ([ys (sort (hash-keys conns) <)]
-         [ind (index-of ys y)])
-    (if (even? ind)
-        (list-ref ys (+ ind 1))
-        (list-ref ys (- ind 1)))))
-
-;; TODO:
-;; 1. test for triangles should use area: area must be < than the total area of the polygon
-;;    - this means we need to calculate rectangles so they never overlap, this might be difficult
-;; 3. we need to process even points that aren't at the end of a connection (i.e. they're creating one)
-;;    - these points create connections. figure out the index of the new connection, and
-;;      use that to create a new connection
-;;    - can we add and remove connections before creating rectangles?
-(define (build-polygon-recs ps)
+(define (make-groups ps)
   (let* ([groups (group-by car ps)]
          ;; sort each element of a group by y
          [groups (map (lambda (g) (sort g (lambda (x y) (< (cadr x) (cadr y))))) groups)]
          ;; sort each group by x
          [groups (sort groups (lambda (x y) (< (car (car x)) (car (car y)))))])
-    (let loop ([groups groups]
-               [connections (hash)]
-               [rectangles '()])
-      (if (empty? groups)
-          rectangles
-          (let* ([cur (car groups)]
-                 [cur-x (car (car cur))]
-                 [cur-ys (map cadr cur)]
-                 [candidates (filter (lambda (y) (hash-has-key? connections y)) cur-ys)]
-                 [other-ys (map (lambda (y) (find-nearest-conn y connections)) candidates)]
-                 [new-recs (map (lambda (y other-y) (build-rec connections cur-x y other-y))
-                                candidates other-ys)]
-                 ;; other-ys must update the connection to the current x
-                 [new-conns (foldl (lambda (y conns) (hash-set conns y cur-x))
-                                   connections other-ys)]
-                 ;; the current ys either add or remove a connection
-                 [new-conns (foldl (lambda (y conns)
-                                     (if (hash-has-key? conns y)
-                                         (hash-remove conns y)
-                                         (hash-set conns y cur-x)))
-                                   new-conns cur-ys)])
-            (printf "group = ~a ~a\nconnections = ~a\ncandidates = ~a\nrecs = ~a\nnew-recs = ~a\n\n"
-                    cur-x cur-ys connections candidates rectangles new-recs)
-            (loop (cdr groups) new-conns (append rectangles (remove-duplicates new-recs))))))))
+    groups))
 
-;; afterwards, for each pair, we check if the missing corners are in
-;; this list of rectangles. if both of them are, then the rectangle is valid,
-;; and we return its area. (if it isn't, we return #f)
+(define (make-rec-groups recs)
+  (let* ([groups (group-by caar recs)]
+         [groups (sort groups (lambda (a b) (< (caaar a) (caaar b))))])
+    groups))
+
+(define (create-pairs l)
+  (if (not (even? (length l)))
+      (error "create-pairs: list length is not even")
+      (let loop ([l l])
+        (if (empty? l)
+            '()
+            (cons (take l 2) (loop (cdr (cdr l))))))))
+
+(define (build-polygon-recs ps)
+  (let loop ([groups (make-groups ps)]
+             [connections (hash)]
+             [rectangles '()])
+    (if (empty? groups)
+        rectangles
+        (let* ([cur (car groups)]
+               [cur-x (car (car cur))]
+               [cur-ys (map cadr cur)]
+               [conn-ys (sort (hash-keys connections) <)]
+               [new-recs (map (lambda (ys) (apply build-rec connections cur-x ys))
+                              (create-pairs conn-ys))]
+               [new-conns (foldl (lambda (y conns) (hash-set conns y cur-x))
+                                 connections conn-ys)]
+               [new-conns (foldl (lambda (y conns)
+                                   (if (hash-has-key? conns y)
+                                       (hash-remove conns y)
+                                       (hash-set conns y cur-x)))
+                                 new-conns cur-ys)])
+          ;(printf "group = ~a ~a\nconnections = ~a\nnew-conns = ~a\nrecs = ~a\nnew-recs = ~a\n\n"
+                  ;cur-x cur-ys connections new-conns rectangles new-recs)
+        (loop (cdr groups) new-conns (append rectangles (remove-duplicates new-recs)))))))
+
+(define (resolve-overlaps-between r rs)
+  (printf "r = ~a rs = ~a\n" r rs)
+  (let* ([x (car (car r))]
+         [y1 (cadr (car r))]
+         [y2 (cadr (cadr r))]
+         [ys (sort (append* (map (lambda (r)
+                                   (let ([ys (map cadr r)])
+                                     (list (sub1 (car ys)) (add1 (cadr ys)))))
+                                 rs)) <)]
+         [ys (if (<= y1 (first ys)) (cons y1 ys) ys)]
+         [ys (if (>= y2 (last ys)) (append ys (list y2)) ys)]
+         [ys (filter (lambda (y) (and (>= y y1) (<= y y2))) ys)]
+         [ys (begin (printf "ys = ~a\n" ys) ys)]
+         [new-recs (map (lambda (pair)
+                          (map (lambda (y) (list x y)) pair))
+                        (create-pairs ys))])
+    new-recs))
+
+         ;[ys (sort (append* (map (lambda (r) (map cadr r)) rs)) <)]
+         ;[ys2 (filter (lambda (y) (and (> y y1) (< y y2))) ys)]
+         ;[ys2 (if (< y1 (first ys)) (cons y1 ys2) ys2)]
+         ;[ys2 (if (> y2 (last  ys)) (append ys2 (list y2)) ys2)])
+    ;(printf "y1 = ~a y2 = ~a ys = ~a ys2 = ~a\n" y1 y2 ys ys2)
+
+(define (resolve-overlaps recs)
+  (let ([groups (make-rec-groups recs)])
+    (append*
+      (foldl (lambda (g changed)
+               (if (empty? changed)
+                   (list g)
+                   (let ([small-recs (append*
+                                      (map (lambda (r) (resolve-overlaps-between r (car changed)))
+                                           g))]
+                         [big-recs (map (lambda (r) (list (list (add1 (car (car r)))
+                                                                (cadr (car r)))
+                                                          (cadr r)))
+                                        g)])
+                     (printf "small-recs = ~a\n" small-recs)
+                     (printf "big-recs = ~a\n" big-recs)
+                     (cons big-recs (cons small-recs changed)))))
+             '() groups))))
 
 (define (part2 ps)
   (let ([pairs (combinations ps 2)]
         [recs  (build-polygon-recs ps)])
-    (visualize-recs recs)
+    ;(visualize-recs recs)
     recs))
     ;; (apply max
     ;;   (map (lambda (pair) (apply area pair))
@@ -214,3 +260,4 @@
 ;; 1,10
 ;;
 ;; ==> i have no idea, but it's an interesting shape
+;;
