@@ -1,7 +1,7 @@
 (define (vec- . args) (apply map - args))
 
-(define (area a b)
-  (apply * (map (lambda (x) (+ 1 (abs x))) (vec- a b))))
+(define (area r)
+  (apply * (map (lambda (x) (+ 1 (abs x))) (apply vec- r))))
 
 (define (parse name)
   (map (lambda (l) (map string->number (string-split l ",")))
@@ -19,7 +19,7 @@
 (define (in-rectangles? p recs)
   (findf (lambda (r) (in-rectangle? p r)) recs))
 
-(define (rectangle-overlaps? a b)
+(define (overlaps? a b)
   (not (and (or (< (car  (cadr b)) (car  (car  a)))
                 (> (car  (car  b)) (car  (cadr a))))
             (or (< (cadr (cadr b)) (cadr (car  a)))
@@ -29,7 +29,7 @@
 
 ;; cut rectangle b with a
 (define (cut-rectangle a b)
-  (if (not (rectangle-overlaps? a b))
+  (if (not (overlaps? a b))
       #f
       (list (list (apply clamp (car  (car  b)) (map car  a))
                   (apply clamp (cadr (car  b)) (map cadr a)))
@@ -132,24 +132,28 @@
   (let* ([x (car (car r))]
          [y1 (cadr (car r))]
          [y2 (cadr (cadr r))]
-         [ys (sort (append* (map (lambda (r)
-                                   (let ([ys (map cadr r)])
-                                     (list (sub1 (car ys)) (add1 (cadr ys)))))
-                                 rs)) <)]
-         [ys (if (<= y1 (first ys)) (cons y1 ys) ys)]
-         [ys (if (>= y2 (last ys)) (append ys (list y2)) ys)]
-         [ys (filter (lambda (y) (and (>= y y1) (<= y y2))) ys)]
-         [ys (begin (printf "ys = ~a\n" ys) ys)]
-         [new-recs (map (lambda (pair)
-                          (map (lambda (y) (list x y)) pair))
-                        (create-pairs ys))])
-    new-recs))
-
-         ;[ys (sort (append* (map (lambda (r) (map cadr r)) rs)) <)]
-         ;[ys2 (filter (lambda (y) (and (> y y1) (< y y2))) ys)]
-         ;[ys2 (if (< y1 (first ys)) (cons y1 ys2) ys2)]
-         ;[ys2 (if (> y2 (last  ys)) (append ys2 (list y2)) ys2)])
-    ;(printf "y1 = ~a y2 = ~a ys = ~a ys2 = ~a\n" y1 y2 ys ys2)
+         [rs (filter (lambda (r) (not (or (< (cadr (cadr r)) y1)
+                                          (> (cadr (car  r)) y2))))
+                     rs)])
+    (if (empty? rs)
+        '()
+        (let* ([ys (append* (map (lambda (r) (map cadr r)) rs))]
+               [ys (drop (drop-right ys 1) 1)]
+               [pairs (filter (lambda (r) (>= (- (cadr r) (car r)) 0))
+                              (map (lambda (r) (list (add1 (car r)) (sub1 (cadr r))))
+                                   (create-pairs ys)))]
+               [center-recs (map (lambda (pair)
+                                   (map (lambda (y) (list x y)) pair))
+                                 pairs)]
+               [start-rec (if (< y1 (cadr (car (first rs))))
+                              (list (list (list x y1)
+                                          (list x (sub1 (cadr (car (first rs)))))))
+                              '())]
+               [end-rec   (if (> y2 (cadr (cadr (last rs))))
+                              (list (list (list x (add1 (cadr (cadr (last rs)))))
+                                          (list x y2)))
+                              '())])
+          (append start-rec center-recs end-rec)))))
 
 (define (resolve-overlaps recs)
   (let ([groups (make-rec-groups recs)])
@@ -157,15 +161,17 @@
       (foldl (lambda (g changed)
                (if (empty? changed)
                    (list g)
-                   (let ([small-recs (append*
-                                      (map (lambda (r) (resolve-overlaps-between r (car changed)))
-                                           g))]
-                         [big-recs (map (lambda (r) (list (list (add1 (car (car r)))
+                   (let* ([from (car changed)]
+                          [recs (map (lambda (r)
+                                       (if (not (findf (lambda (s) (overlaps? r s)) from))
+                                           r
+                                           (cons (list (list (add1 (car (car r))
                                                                 (cadr (car r)))
-                                                          (cadr r)))
-                                        g)])
-                     (printf "small-recs = ~a\n" small-recs)
-                     (printf "big-recs = ~a\n" big-recs)
+                                                          (cadr r))
+                                                    (map (lambda (r) (resolve-overlaps-between r from)))))))
+                                     g)])
+                     (printf "g = ~a\nfrom = ~a\n" g from)
+                     (printf "recs = ~a\n" recs)
                      (cons big-recs (cons small-recs changed)))))
              '() groups))))
 
