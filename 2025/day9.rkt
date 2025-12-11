@@ -3,10 +3,6 @@
 (define (area r)
   (apply * (map (lambda (x) (+ 1 (abs x))) (apply vec- r))))
 
-(define (parse name)
-  (map (lambda (l) (map string->number (string-split l ",")))
-       (file->lines name)))
-
 (define (consecutive-pairs l)
   (map list (drop-right l 1) (drop l 1)))
 
@@ -20,21 +16,157 @@
   (findf (lambda (r) (in-rectangle? p r)) recs))
 
 (define (overlaps? a b)
-  (not (and (or (< (car  (cadr b)) (car  (car  a)))
+  (not (or  (or (< (car  (cadr b)) (car  (car  a)))
                 (> (car  (car  b)) (car  (cadr a))))
             (or (< (cadr (cadr b)) (cadr (car  a)))
-                (> (cadr (car  b)) (car  (cadr a)))))))
+                (> (cadr (car  b)) (cadr (cadr a)))))))
 
 (define (clamp x a b) (max (min x b) a))
 
-;; cut rectangle b with a
-(define (cut-rectangle a b)
-  (if (not (overlaps? a b))
+(define (build-rec conns x2 y other-y)
+  (let ([x1 (max (hash-ref conns y)
+                 (hash-ref conns other-y))]
+        [y1 (min y other-y)]
+        [y2 (max y other-y)])
+    (list (list x1 y1) (list x2 y2)))) ;; my rectangles are AABBs
+
+;; groups each point by x
+;; sorts groups by y
+;; sorts each element of a group by x
+(define (make-groups ps)
+  (let* ([groups (group-by car ps)]
+         [groups (map (lambda (g) (sort g (lambda (x y) (< (cadr x) (cadr y))))) groups)]
+         [groups (sort groups (lambda (x y) (< (car (car x)) (car (car y)))))])
+    groups))
+
+(define (make-rec-groups recs)
+  (let* ([groups (group-by caar recs)]
+         [groups (sort groups (lambda (a b) (< (caaar a) (caaar b))))])
+    groups))
+
+(define (create-pairs l)
+  (let loop ([l l])
+    (if (empty? l)
+        '()
+        (cons (take l 2) (loop (cdr (cdr l)))))))
+
+;; split the polygon formed by points `ps` into a list of rectangles
+;; these rectangles will be slightly overlapped, will fix them later
+;; how it works:
+;; 1) group points into sorted groups
+;; 2) keep track of horizontal connections between points
+;; 3) for each connection, keep track of the x when they were last used
+;; 4) on each group, create a new rectangle formed by the current
+;; connections, by the x of the current group and by the older x in 3)
+(define (split-in-recs ps)
+  (let loop ([groups (make-groups ps)]
+             [connections (hash)]
+             [rectangles '()])
+    (if (empty? groups)
+        rectangles
+        (let* ([cur (car groups)]
+               [cur-x (car (car cur))]
+               [cur-ys (map cadr cur)]
+               [conn-ys (sort (hash-keys connections) <)]
+               ; note that # of connections is always even
+               [new-recs (map (lambda (ys) (apply build-rec connections cur-x ys))
+                              (create-pairs conn-ys))]
+               [new-conns (foldl (lambda (y conns) (hash-set conns y cur-x))
+                                 connections conn-ys)]
+               ; if a connection is alive and hits a point, remove it
+               ; otherwise, points not hit by a connection create new ones
+               [new-conns (foldl (lambda (y conns)
+                                   (if (hash-has-key? conns y)
+                                       (hash-remove conns y)
+                                       (hash-set conns y cur-x)))
+                                 new-conns cur-ys)])
+        (loop (cdr groups) new-conns (append rectangles (remove-duplicates new-recs)))))))
+
+;;   *-*       **-*
+;; *-* |     *-*| |
+;; | | |     | || |
+;; *-* | ==> *-*| | (can you see the little stars?)
+;;   | |       *| | 
+;; *-* |     *-*| | 
+;; *-* |     *-*| |
+;;   *-*       **-*
+(define (resolve-overlaps-between r rs)
+  (let* ([x (car (car r))]
+         [y1 (cadr (car r))]
+         [y2 (cadr (cadr r))]
+         [rs (filter (lambda (r) (not (or (< (cadr (cadr r)) y1)
+                                          (> (cadr (car  r)) y2)))) rs)])
+    (if (empty? rs)
+        (list r)
+        (let* ([ys (append* (map (lambda (r) (map cadr r)) rs))]
+               [ys (drop (drop-right ys 1) 1)]
+               [pairs (filter (lambda (r) (>= (- (cadr r) (car r)) 0))
+                              (map (lambda (r) (list (add1 (car r)) (sub1 (cadr r))))
+                                   (create-pairs ys)))]
+               [center-recs (map (lambda (pair)
+                                   (map (lambda (y) (list x y)) pair))
+                                 pairs)]
+               [start-rec (if (< y1 (cadr (car (first rs))))
+                              (list (list (list x y1)
+                                          (list x (sub1 (cadr (car (first rs)))))))
+                              '())]
+               [end-rec   (if (> y2 (cadr (cadr (last rs))))
+                              (list (list (list x (add1 (cadr (cadr (last rs)))))
+                                          (list x y2)))
+                              '())]
+               [big-rec (list (list (add1 (car (car r))) (cadr (car r)))
+                              (cadr r))])
+          (append (list big-rec) start-rec center-recs end-rec)))))
+
+(define (resolve-overlaps recs)
+  (let ([groups (make-rec-groups recs)])
+    (append*
+      (foldl (lambda (g changed)
+               (if (empty? changed)
+                   (list g)
+                   (let* ([last-changed (car changed)]
+                          [recs (map (lambda (r) (resolve-overlaps-between r last-changed)) g)]
+                          [big-recs (map car recs)]
+                          [small-recs (append* (map cdr recs))])
+                     (cons big-recs (cons small-recs changed)))))
+             '() groups))))
+
+(define (cut-rectangle cutter cuttee)
+  (if (not (overlaps? cutter cuttee))
       #f
-      (list (list (apply clamp (car  (car  b)) (map car  a))
-                  (apply clamp (cadr (car  b)) (map cadr a)))
-            (list (apply clamp (car  (cadr b)) (map car  a))
-                  (apply clamp (cadr (cadr b)) (map cadr a))))))
+      (list (list (apply clamp (car  (car  cuttee)) (map car  cutter))
+                  (apply clamp (cadr (car  cuttee)) (map cadr cutter)))
+            (list (apply clamp (car  (cadr cuttee)) (map car  cutter))
+                  (apply clamp (cadr (cadr cuttee)) (map cadr cutter))))))
+
+;; test if `r`, built by two points, can fit into the polygon created by `rs`
+;; (i.e. it fits without holes inside or at the edges
+;; do it by cutting each rectangle in `rs` so they stay inside `r`'s area, then
+;; summing the areas of these cutted rectangles. that sum must be <= `r`'s area.
+(define (test-rec r rs)
+  (<= (area r)
+      (apply + (map area (filter identity
+                                 (map (lambda (s) (cut-rectangle r s)) rs))))))
+
+(define (make-proper-rec r)
+  (let ([x1 (car  (car r))] [x2 (car  (cadr r))]
+        [y1 (cadr (car r))] [y2 (cadr (cadr r))])
+    (list (list (min x1 x2) (min y1 y2))
+          (list (max x1 x2) (max y1 y2)))))
+
+(define (solve name)
+  (let* ([in (map (lambda (l) (map string->number (string-split l ",")))
+                  (file->lines name))]
+         [pairs (combinations in 2)])
+    (list
+      (apply max (map area (combinations in 2)))
+      ;; 1) create rectangles that describe the bigger polygon
+      ;; 2) fix overlaps between rectangles
+      ;; 3) test each pair of points against the rectangles
+      (let ([recs  (resolve-overlaps (split-in-recs in))])
+        (apply max (map (lambda (r) (area r))
+                        (filter (lambda (r) (test-rec (make-proper-rec r) recs))
+                                pairs)))))))
 
 ;; some visualizations
 (define (draw-line! grid line)
@@ -70,200 +202,3 @@
       (for ([x (in-inclusive-range 0 width)])
         (printf "~a" (if (in-rectangles? (list x y) recs) #\X #\.)))
       (printf "\n"))))
-
-;; group each point by x, making groups
-;; sort each group by y
-;;
-;; begin "sweeping a line" through each group of points:
-;; - the goal is to create rectangles that describe the big polygon
-(define (build-rec conns x2 y other-y)
-  (let ([x1 (max (hash-ref conns y)
-                 (hash-ref conns other-y))]
-        [y1 (min y other-y)]
-        [y2 (max y other-y)])
-    (list (list x1 y1) (list x2 y2)))) ;; my rectangles are AABBs
-
-(define (make-groups ps)
-  (let* ([groups (group-by car ps)]
-         ;; sort each element of a group by y
-         [groups (map (lambda (g) (sort g (lambda (x y) (< (cadr x) (cadr y))))) groups)]
-         ;; sort each group by x
-         [groups (sort groups (lambda (x y) (< (car (car x)) (car (car y)))))])
-    groups))
-
-(define (make-rec-groups recs)
-  (let* ([groups (group-by caar recs)]
-         [groups (sort groups (lambda (a b) (< (caaar a) (caaar b))))])
-    groups))
-
-(define (create-pairs l)
-  (if (not (even? (length l)))
-      (error "create-pairs: list length is not even")
-      (let loop ([l l])
-        (if (empty? l)
-            '()
-            (cons (take l 2) (loop (cdr (cdr l))))))))
-
-(define (build-polygon-recs ps)
-  (let loop ([groups (make-groups ps)]
-             [connections (hash)]
-             [rectangles '()])
-    (if (empty? groups)
-        rectangles
-        (let* ([cur (car groups)]
-               [cur-x (car (car cur))]
-               [cur-ys (map cadr cur)]
-               [conn-ys (sort (hash-keys connections) <)]
-               [new-recs (map (lambda (ys) (apply build-rec connections cur-x ys))
-                              (create-pairs conn-ys))]
-               [new-conns (foldl (lambda (y conns) (hash-set conns y cur-x))
-                                 connections conn-ys)]
-               [new-conns (foldl (lambda (y conns)
-                                   (if (hash-has-key? conns y)
-                                       (hash-remove conns y)
-                                       (hash-set conns y cur-x)))
-                                 new-conns cur-ys)])
-          ;(printf "group = ~a ~a\nconnections = ~a\nnew-conns = ~a\nrecs = ~a\nnew-recs = ~a\n\n"
-                  ;cur-x cur-ys connections new-conns rectangles new-recs)
-        (loop (cdr groups) new-conns (append rectangles (remove-duplicates new-recs)))))))
-
-(define (resolve-overlaps-between r rs)
-  (printf "r = ~a rs = ~a\n" r rs)
-  (let* ([x (car (car r))]
-         [y1 (cadr (car r))]
-         [y2 (cadr (cadr r))]
-         [rs (filter (lambda (r) (not (or (< (cadr (cadr r)) y1)
-                                          (> (cadr (car  r)) y2))))
-                     rs)])
-    (if (empty? rs)
-        '()
-        (let* ([ys (append* (map (lambda (r) (map cadr r)) rs))]
-               [ys (drop (drop-right ys 1) 1)]
-               [pairs (filter (lambda (r) (>= (- (cadr r) (car r)) 0))
-                              (map (lambda (r) (list (add1 (car r)) (sub1 (cadr r))))
-                                   (create-pairs ys)))]
-               [center-recs (map (lambda (pair)
-                                   (map (lambda (y) (list x y)) pair))
-                                 pairs)]
-               [start-rec (if (< y1 (cadr (car (first rs))))
-                              (list (list (list x y1)
-                                          (list x (sub1 (cadr (car (first rs)))))))
-                              '())]
-               [end-rec   (if (> y2 (cadr (cadr (last rs))))
-                              (list (list (list x (add1 (cadr (cadr (last rs)))))
-                                          (list x y2)))
-                              '())])
-          (append start-rec center-recs end-rec)))))
-
-(define (resolve-overlaps recs)
-  (let ([groups (make-rec-groups recs)])
-    (append*
-      (foldl (lambda (g changed)
-               (if (empty? changed)
-                   (list g)
-                   (let* ([from (car changed)]
-                          [recs (map (lambda (r)
-                                       (if (not (findf (lambda (s) (overlaps? r s)) from))
-                                           r
-                                           (cons (list (list (add1 (car (car r))
-                                                                (cadr (car r)))
-                                                          (cadr r))
-                                                    (map (lambda (r) (resolve-overlaps-between r from)))))))
-                                     g)])
-                     (printf "g = ~a\nfrom = ~a\n" g from)
-                     (printf "recs = ~a\n" recs)
-                     (cons big-recs (cons small-recs changed)))))
-             '() groups))))
-
-(define (part2 ps)
-  (let ([pairs (combinations ps 2)]
-        [recs  (build-polygon-recs ps)])
-    ;(visualize-recs recs)
-    recs))
-    ;; (apply max
-    ;;   (map (lambda (pair) (apply area pair))
-    ;;        (filter (lambda (pair)
-    ;;                  (let ([c1 (list (car (car pair))  (cadr (cadr pair)))]
-    ;;                        [c2 (list (car (cadr pair)) (cadr (car  pair)))])
-    ;;                    ;; (printf "~a ~a ~a\n" pair c1 c2)
-    ;;                    (and (in-rectangles? c1 recs) (in-rectangles? c2 recs))))
-    ;;                pairs)))))
-
-(define (solve name)
-  (let* ([in (parse name)])
-    ;; (list
-    ;;   (apply max (map (lambda (p) (apply area p))
-    ;;                   (combinations in 2)))
-      (part2 in)))
-
-;; OTHER INPUTS
-;;
-;; 1,0
-;; 3,0
-;; 3,6
-;; 16,6
-;; 16,0
-;; 18,0
-;; 18,9
-;; 13,9
-;; 13,7
-;; 6,7
-;; 6,9
-;; 1,9
-;;
-;; ==> 30
-;;
-;;
-;; 1,1
-;; 8,1
-;; 8,3
-;; 3,3
-;; 3,4
-;; 8,4
-;; 8,9
-;; 18,9
-;; 18,11
-;; 5,11
-;; 5,9
-;; 4,9
-;; 4,11
-;; 1,11
-;; 1,7
-;; 6,7
-;; 6,6
-;; 1,6
-;;
-;; ==> 88
-;;
-;;
-;; 1,5
-;; 3,5
-;; 3,8
-;; 7,8
-;; 7,5
-;; 9,5
-;; 9,10
-;; 11,10
-;; 11,3
-;; 6,3
-;; 6,7
-;; 4,7
-;; 4,1
-;; 13,1
-;; 13,12
-;; 1,12
-;;
-;; ==> 72
-;;
-;;
-;; 1,1
-;; 10,1
-;; 10,4
-;; 5,4
-;; 5,6
-;; 10,6
-;; 10,10
-;; 1,10
-;;
-;; ==> i have no idea, but it's an interesting shape
-;;
