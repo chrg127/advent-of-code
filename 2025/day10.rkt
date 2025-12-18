@@ -1,39 +1,33 @@
-(define (shrink l) (drop (drop-right l 1) 1))
+(define (drop-ends l) (drop (drop-right l 1) 1))
 
-(define (push-button button machine)
-  (foldl (lambda (pos machine)
-           (list-set machine pos (if (list-ref machine pos) #f #t)))
-         machine button))
-
-(define (find-pressed machine diagram buttons)
-  (define memo (make-hash))
-  (define (loop machine button)
-    (cond [(hash-has-key? memo (list machine button))
-           (hash-ref memo (list machine button))]
-          [(equal? machine diagram) 1]
-          [else
-           (begin
-             (hash-set! memo (list machine button) #f)
-             (let ([results (filter identity
-                                 (map (lambda (b)
-                                        (loop (push-button b machine) b))
-                                      buttons))])
-              (if (empty? results)
-                  #f
-                  (let ([res (apply min results)])
-                    (begin
-                      (hash-set! memo (list machine button) (+ 1 res))
-                      (+ 1 res))))))]))
-  (sub1 (loop machine '())))
+(define (count-presses diagram buttons)
+  (let loop ([machines '(0)] [depth 0])
+    (if (member diagram machines)
+        depth
+        (loop (remove-duplicates
+               (append*
+                 (map (lambda (m)
+                        (map (lambda (b) (bitwise-xor b m))
+                             buttons))
+                      machines)))
+              (add1 depth)))))
 
 (define (solve name)
   (apply +
     (map (lambda (line)
            (let* ([splitted (string-split line " ")]
-                  [diagram (map (lambda (c) (if (char=? c #\#) #t #f))
-                                (shrink (string->list (car splitted))))]
+                  [diagram (string->number
+                            (list->string
+                              (reverse (map (lambda (c) (if (char=? c #\#) #\1 #\0))
+                                            (drop-ends (string->list (car splitted))))))
+                            2)]
                   [buttons (map (lambda (b) (read (open-input-string (string-replace b "," " "))))
-                                (shrink splitted))]
+                                (drop-ends splitted))]
+                  [buttons-bins (map (lambda (b)
+                                       (foldl (lambda (n r)
+                                                (bitwise-ior r (arithmetic-shift 1 n)))
+                                              0 b))
+                                     buttons)]
                   [joltages (last splitted)])
-             (find-pressed (make-list (length diagram) #f) diagram buttons)))
+             (count-presses diagram buttons-bins)))
          (file->lines name))))
