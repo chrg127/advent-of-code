@@ -1,3 +1,5 @@
+*Warning*: this repository has been migrated to [codeberg](https://codeberg.org/chrg/gmplayer). You should join codeberg too (or any one of the github alternatives).
+
 These are my solutions for Advent of Code 2020, 2021 and 2022.
 
 Some solutions may be incomplete or missing. In particular:
