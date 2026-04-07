@@ -1,4 +1,4 @@
-*Warning*: this repository has been migrated to [codeberg](https://codeberg.org/chrg/gmplayer). You should join codeberg too (or any one of the github alternatives).
+*Warning*: this repository has been migrated to [codeberg](https://codeberg.org/chrg/advent-of-code). You should join codeberg too (or any one of the github alternatives).
 
 These are my solutions for Advent of Code 2020, 2021 and 2022.
 
